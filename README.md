@@ -1,2 +1,3 @@
 # policyd-rate-limit
-rate limiter SMTP policy daemon
+
+Postfix rate limiter SMTP policy daemon
