@@ -1,11 +1,19 @@
+use std::fs::OpenOptions;
+use std::io::Write;
 use std::io::{BufRead, BufReader};
 use std::os::unix::net::{UnixListener, UnixStream};
 use std::thread;
 
 fn handle_client(stream: UnixStream) {
     let stream = BufReader::new(stream);
+    let mut file = OpenOptions::new()
+        .append(true)
+        .create(true)
+        .open("/tmp/log.txt")
+        .expect("cannot open file");
     for line in stream.lines() {
-        println!("{}", line.unwrap());
+        file.write_all(line.unwrap().as_bytes())
+            .expect("write failed");
     }
 }
 
