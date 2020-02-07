@@ -1,3 +1,4 @@
+use std::error::Error;
 use std::fs::OpenOptions;
 use std::io::Write;
 use std::io::{BufRead, BufReader};
@@ -5,18 +6,23 @@ use std::os::unix::net::{UnixListener, UnixStream};
 use std::process;
 use std::thread;
 
-fn handle_client(stream: UnixStream) {
+fn handle_client(stream: UnixStream) -> Result<(), Box<dyn Error>> {
+    let mut reply = stream.try_clone()?;
     let stream = BufReader::new(stream);
     let mut file = OpenOptions::new()
         .append(true)
         .create(true)
-        .open("/tmp/log.txt")
-        .expect("cannot open file");
+        .open("/tmp/log.txt")?;
     for line in stream.lines() {
-        file.write_all(format!("{}\n", line.unwrap()).as_bytes())
-            .expect("write failed");
+        let line = line?;
+        if line.is_empty() {
+            reply.write_all(b"action=DUNNO\n\n")?;
+            file.write_all(b"--\n\n")?;
+            return Ok(());
+        }
+        file.write_all(format!("{}\n", line).as_bytes())?;
     }
-    file.write_all(b"---\n\n").unwrap();
+    Ok(())
 }
 
 fn main() {
@@ -29,7 +35,10 @@ fn main() {
     for stream in listener.incoming() {
         match stream {
             Ok(stream) => {
-                thread::spawn(|| handle_client(stream));
+                thread::spawn(|| match handle_client(stream) {
+                    Ok(_) => println!("dispatched"),
+                    Err(e) => println!("-----> {}", e),
+                });
             }
             Err(err) => {
                 println!("Error: {}", err);
