@@ -1,5 +1,5 @@
 use clap::{App, Arg, SubCommand};
-//use dsn;
+use mysql::Error::MySqlError;
 use std::error::Error;
 use std::fs::OpenOptions;
 use std::io::Write;
@@ -12,6 +12,13 @@ use std::thread;
 struct CreateUser {
     limit: Option<usize>,
     rate: Option<usize>,
+}
+
+fn is_num(s: String) -> Result<(), String> {
+    if let Err(..) = s.parse::<usize>() {
+        return Err(String::from("Not a valid number!"));
+    }
+    Ok(())
 }
 
 fn main() {
@@ -70,6 +77,7 @@ fn main() {
         )
         .get_matches();
 
+    // if cuser, create the user if not found in the DB
     let cuser = if let Some(m) = matches.subcommand_matches("cuser") {
         CreateUser {
             limit: Some(m.value_of("limit").unwrap().parse::<usize>().unwrap()),
@@ -80,6 +88,8 @@ fn main() {
     };
 
     let socket_path = matches.value_of("socket").unwrap();
+
+    // prepare DSN for the mysql pool
     let dsn = matches.value_of("dsn").unwrap();
     let dsn = dsn::parse(dsn).unwrap_or_else(|e| {
         eprintln!("{}", e);
@@ -102,20 +112,23 @@ fn main() {
         process::exit(1);
     });
 
+    // remove existing socket file if exists
     drop(std::fs::remove_file(socket_path));
     let listener = UnixListener::bind(socket_path).unwrap_or_else(|e| {
         eprintln!("{}", e);
         process::exit(1);
     });
 
+    // start to listen in the socket
     for stream in listener.incoming() {
         match stream {
             Ok(stream) => {
                 let pool = pool.clone();
                 let cuser = cuser.clone();
-                thread::spawn(|| match handle_client(stream, pool, cuser) {
-                    Err(e) => println!("{}", e),
-                    _ => (),
+                thread::spawn(|| {
+                    if let Err(e) = handle_client(stream, pool, cuser) {
+                        println!("{}", e)
+                    }
                 });
             }
             Err(err) => {
@@ -138,21 +151,36 @@ fn handle_client(
         .append(true)
         .create(true)
         .open("/tmp/log.txt")?;
+
+    // search for sasl_username
     for line in stream.lines() {
         let line = line?;
-        if line.is_empty() {
+        if line.starts_with("sasl_username=") {
+            let sasl_username = line.rsplit('=').take(1).collect::<Vec<_>>()[0];
+            if sasl_username.is_empty() {
+                reply.write_all(b"action=DUNNO\n\n")?;
+                return Ok(());
+            }
+            // find username
+            let result = pool.prep_exec(
+                "SELECT IF(quota > used, 1, 0) FROM ratelimit WHERE email=?",
+                (&sasl_username,),
+            )?;
+            let row = result
+                .last()
+                .ok_or(MySqlError)?
+                .map_err(mysql::error::Error::MySqlError)?;
+        //  let elapsed = mysql::from_row_opt::<usize>(row).map_err(|e| Error::MySQL(e.into()))?;
+        // println!("{:?}", mysql::from_row(row.unwrap()));
+        //if now != row {
+        //return Err(Error::NotMatching("no matching...".into()));
+        //}
+        } else if line.is_empty() {
             reply.write_all(b"action=DUNNO\n\n")?;
             file.write_all(b"--\n\n")?;
             return Ok(());
         }
         file.write_all(format!("{}\n", line).as_bytes())?;
-    }
-    Ok(())
-}
-
-fn is_num(s: String) -> Result<(), String> {
-    if let Err(..) = s.parse::<usize>() {
-        return Err(String::from("Not a valid number!"));
     }
     Ok(())
 }
