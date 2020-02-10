@@ -1,4 +1,4 @@
-use clap::{App, Arg};
+use clap::{App, Arg, SubCommand};
 //use dsn;
 use std::error::Error;
 use std::fs::OpenOptions;
@@ -7,6 +7,12 @@ use std::io::{BufRead, BufReader};
 use std::os::unix::net::{UnixListener, UnixStream};
 use std::process;
 use std::thread;
+
+#[derive(Debug, Default, Clone)]
+struct CreateUser {
+    limit: Option<usize>,
+    rate: Option<usize>,
+}
 
 fn main() {
     let matches = App::new(env!("CARGO_PKG_NAME"))
@@ -40,7 +46,38 @@ fn main() {
                 .long("socket")
                 .short("s"),
         )
+        .subcommand(
+            SubCommand::with_name("cuser")
+                .about("Create the user if not found, defaults: 100 messages per day")
+                .arg(
+                    Arg::with_name("limit")
+                        .default_value("100")
+                        .help("maximum allowed messages")
+                        .long("limit")
+                        .short("l")
+                        .validator(is_num),
+                )
+                .arg(
+                    Arg::with_name("rate")
+                        .default_value("86400")
+                        .help(
+                            "rate in seconds, limits the messages to be sent in the defined period",
+                        )
+                        .long("rate")
+                        .short("r")
+                        .validator(is_num),
+                ),
+        )
         .get_matches();
+
+    let cuser = if let Some(m) = matches.subcommand_matches("cuser") {
+        CreateUser {
+            limit: Some(m.value_of("limit").unwrap().parse::<usize>().unwrap()),
+            rate: Some(m.value_of("rate").unwrap().parse::<usize>().unwrap()),
+        }
+    } else {
+        CreateUser::default()
+    };
 
     let socket_path = matches.value_of("socket").unwrap();
     let dsn = matches.value_of("dsn").unwrap();
@@ -75,7 +112,8 @@ fn main() {
         match stream {
             Ok(stream) => {
                 let pool = pool.clone();
-                thread::spawn(|| match handle_client(stream, pool) {
+                let cuser = cuser.clone();
+                thread::spawn(|| match handle_client(stream, pool, cuser) {
                     Err(e) => println!("{}", e),
                     _ => (),
                 });
@@ -88,8 +126,12 @@ fn main() {
     }
 }
 
-fn handle_client(stream: UnixStream, pool: mysql::Pool) -> Result<(), Box<dyn Error>> {
-    println!("{:?}", pool);
+fn handle_client(
+    stream: UnixStream,
+    pool: mysql::Pool,
+    cuser: CreateUser,
+) -> Result<(), Box<dyn Error>> {
+    println!("{:?} {:?}", pool, cuser);
     let mut reply = stream.try_clone()?;
     let stream = BufReader::new(stream);
     let mut file = OpenOptions::new()
