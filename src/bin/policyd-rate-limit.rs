@@ -1,5 +1,5 @@
 use clap::{App, Arg, SubCommand};
-use mysql::Error::MySqlError;
+use policyd_rate_limit::queries;
 use std::error::Error;
 use std::fs::OpenOptions;
 use std::io::Write;
@@ -9,7 +9,7 @@ use std::process;
 use std::thread;
 
 #[derive(Debug, Default, Clone)]
-struct CreateUser {
+pub struct CreateUser {
     limit: Option<usize>,
     rate: Option<usize>,
 }
@@ -126,7 +126,9 @@ fn main() {
                 let pool = pool.clone();
                 let cuser = cuser.clone();
                 thread::spawn(|| {
-                    if let Err(e) = handle_client(stream, pool, cuser) {
+                    let mut reply = stream.try_clone().unwrap();
+                    if let Err(e) = handle_client(stream, queries::new(pool), cuser) {
+                        drop(reply.write_all(b"action=DUNNO\n\n"));
                         println!("{}", e)
                     }
                 });
@@ -141,10 +143,10 @@ fn main() {
 
 fn handle_client(
     stream: UnixStream,
-    pool: mysql::Pool,
+    pool: queries::Queries,
     cuser: CreateUser,
 ) -> Result<(), Box<dyn Error>> {
-    println!("{:?} {:?}", pool, cuser);
+    println!("{:?} {:?}", pool.pool, cuser);
     let mut reply = stream.try_clone()?;
     let stream = BufReader::new(stream);
     let mut file = OpenOptions::new()
@@ -161,20 +163,18 @@ fn handle_client(
                 reply.write_all(b"action=DUNNO\n\n")?;
                 return Ok(());
             }
+            println!("{:#?}", cuser);
             // find username
-            let result = pool.prep_exec(
-                "SELECT IF(quota > used, 1, 0) FROM ratelimit WHERE email=?",
-                (&sasl_username,),
-            )?;
-            let row = result
-                .last()
-                .ok_or(MySqlError)?
-                .map_err(mysql::error::Error::MySqlError)?;
-        //  let elapsed = mysql::from_row_opt::<usize>(row).map_err(|e| Error::MySQL(e.into()))?;
-        // println!("{:?}", mysql::from_row(row.unwrap()));
-        //if now != row {
-        //return Err(Error::NotMatching("no matching...".into()));
-        //}
+            match pool.get_user(sasl_username) {
+                Ok(n) => println!("{}", n),
+                Err(_) => {
+                    if let Some(limit) = cuser.limit {
+                        if let Some(rate) = cuser.rate {
+                            pool.create_user(sasl_username, limit, rate)?;
+                        }
+                    }
+                }
+            }
         } else if line.is_empty() {
             reply.write_all(b"action=DUNNO\n\n")?;
             file.write_all(b"--\n\n")?;
