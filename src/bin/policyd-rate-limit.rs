@@ -125,9 +125,9 @@ fn main() {
             Ok(stream) => {
                 let pool = pool.clone();
                 let cuser = cuser.clone();
-                thread::spawn(|| {
+                thread::spawn(move || {
                     let mut reply = stream.try_clone().unwrap();
-                    if let Err(e) = handle_client(stream, queries::new(pool), cuser) {
+                    if let Err(e) = handle_client(stream, &queries::new(pool), &cuser) {
                         drop(reply.write_all(b"action=DUNNO\n\n"));
                         println!("{}", e)
                     }
@@ -143,8 +143,8 @@ fn main() {
 
 fn handle_client(
     stream: UnixStream,
-    pool: queries::Queries,
-    cuser: CreateUser,
+    pool: &queries::Queries,
+    cuser: &CreateUser,
 ) -> Result<(), Box<dyn Error>> {
     println!("{:?} {:?}", pool.pool, cuser);
     let mut reply = stream.try_clone()?;
@@ -163,18 +163,28 @@ fn handle_client(
                 reply.write_all(b"action=DUNNO\n\n")?;
                 return Ok(());
             }
-            println!("{:#?}", cuser);
             // find username
             match pool.get_user(sasl_username) {
-                Ok(n) => println!("{}", n),
+                Ok(ok) => {
+                    if ok {
+                        pool.update_quota(sasl_username)?;
+                        reply.write_all(b"action=DUNNO\n\n")?;
+                    } else {
+                        reply.write_all(b"action=REJECT\n\n")?;
+                        pool.reset_quota(sasl_username)?;
+                    }
+                    return Ok(());
+                }
                 Err(_) => {
                     if let Some(limit) = cuser.limit {
                         if let Some(rate) = cuser.rate {
                             pool.create_user(sasl_username, limit, rate)?;
                         }
                     }
+                    reply.write_all(b"action=DUNNO\n\n")?;
+                    return Ok(());
                 }
-            }
+            };
         } else if line.is_empty() {
             reply.write_all(b"action=DUNNO\n\n")?;
             file.write_all(b"--\n\n")?;
