@@ -99,13 +99,23 @@ fn main() {
 
     let mut opts = mysql::OptsBuilder::new();
     opts.user(dsn.username);
-    opts.pass(dsn.password);
+    opts.pass(dsn.password.clone());
     opts.ip_or_hostname(dsn.host);
     if let Some(port) = dsn.port {
         opts.tcp_port(port);
     }
     opts.socket(dsn.socket);
     opts.db_name(dsn.database);
+
+    // mysql ssl options
+    let mut ssl_opts = mysql::SslOpts::default();
+    if let Some(tls) = dsn.params.get("tls") {
+        if *tls == "skip-verify" {
+            ssl_opts.set_danger_accept_invalid_certs(true);
+        }
+    }
+    opts.ssl_opts(ssl_opts);
+
     let pool = mysql::Pool::new_manual(pool_min, pool_max, opts).unwrap_or_else(|e| {
         eprintln!("Could not connect to MySQL: {}", e);
         process::exit(1);
