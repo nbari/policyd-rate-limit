@@ -1,6 +1,6 @@
 [package]
 name = "policyd-rate-limit"
-version = "0.0.2"
+version = "0.1.0"
 authors = ["Nicolas Embriz <nbari@tequila.io>"]
 description = "Postfix rate limiter SMTP policy daemon"
 documentation = "https://github.com/nbari/policyd-rate-limit"

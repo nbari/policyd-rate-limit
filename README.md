@@ -1,6 +1,7 @@
 # policyd-rate-limit
 
 [![crates.io](https://img.shields.io/crates/v/policyd-rate-limit.svg)](https://crates.io/crates/policyd-rate-limit)
+[![Build Status](https://travis-ci.org/nbari/policyd-rate-limit.svg?branch=master)](https://travis-ci.org/nbari/policyd-rate-limit)
 
 Postfix rate limiter SMTP policy daemon
 
