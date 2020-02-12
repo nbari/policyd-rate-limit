@@ -192,7 +192,7 @@ fn handle_client(
                     if pool.reset_quota(sasl_username)? > 0 {
                         reply.write_all(b"action=DUNNO\n\n")?;
                     } else {
-                        reply.write_all(b"action=REJECT Sending limit exceeded\n\n")?;
+                        reply.write_all(b"action=REJECT sending limit exceeded\n\n")?;
                     }
                 }
                 pool.update_quota(sasl_username)?;
