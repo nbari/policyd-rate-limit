@@ -52,6 +52,11 @@ fn main() {
                 .long("socket")
                 .short("s"),
         )
+        .arg(
+            Arg::with_name("debug")
+                .help("Prints all input from client")
+                .long("debug"),
+        )
         .subcommand(
             SubCommand::with_name("cuser")
                 .about("Create the user if not found, defaults: 100 messages per day")
@@ -75,6 +80,8 @@ fn main() {
                 ),
         )
         .get_matches();
+
+    let debug = matches.is_present("debug");
 
     // if cuser, create the user if not found in the DB
     let cuser = if let Some(m) = matches.subcommand_matches("cuser") {
@@ -121,6 +128,10 @@ fn main() {
         process::exit(1);
     });
 
+    if debug {
+        println!("{:?}", pool);
+    }
+
     // remove existing socket file if exists
     drop(std::fs::remove_file(socket_path));
     let listener = UnixListener::bind(socket_path).unwrap_or_else(|e| {
@@ -136,7 +147,7 @@ fn main() {
                 let cuser = cuser.clone();
                 thread::spawn(move || {
                     let mut reply = stream.try_clone().unwrap();
-                    if let Err(e) = handle_client(stream, &queries::new(pool), &cuser) {
+                    if let Err(e) = handle_client(stream, &queries::new(pool), &cuser, debug) {
                         drop(reply.write_all(b"action=DUNNO\n\n"));
                         println!("Error: {}", e)
                     }
@@ -154,6 +165,7 @@ fn handle_client(
     stream: UnixStream,
     pool: &queries::Queries,
     cuser: &CreateUser,
+    debug: bool,
 ) -> Result<(), Box<dyn Error>> {
     let mut reply = stream.try_clone()?;
     let stream = BufReader::new(stream);
@@ -161,6 +173,9 @@ fn handle_client(
     // search for sasl_username
     for line in stream.lines() {
         let line = line?;
+        if debug {
+            println!("{}", line);
+        }
         if line.starts_with("sasl_username=") {
             let sasl_username = line.rsplit('=').take(1).collect::<Vec<_>>()[0];
             if sasl_username.is_empty() {
