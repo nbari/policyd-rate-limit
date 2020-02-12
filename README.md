@@ -16,6 +16,7 @@ USAGE:
     policyd-rate-limit [OPTIONS] --dsn <dsn> [SUBCOMMAND]
 
 FLAGS:
+        --debug      Prints all input from client
     -h, --help       Prints help information
     -V, --version    Prints version information
 
