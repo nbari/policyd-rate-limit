@@ -217,7 +217,7 @@ dependencies = [
 
 [[package]]
 name = "dsn"
-version = "0.4.1"
+version = "1.0.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 dependencies = [
  "percent-encoding 2.1.0 (registry+https://github.com/rust-lang/crates.io-index)",
@@ -630,7 +630,7 @@ name = "policyd-rate-limit"
 version = "0.0.2"
 dependencies = [
  "clap 2.33.0 (registry+https://github.com/rust-lang/crates.io-index)",
- "dsn 0.4.1 (registry+https://github.com/rust-lang/crates.io-index)",
+ "dsn 1.0.0 (registry+https://github.com/rust-lang/crates.io-index)",
  "mysql 17.0.0 (registry+https://github.com/rust-lang/crates.io-index)",
 ]
 
@@ -1019,7 +1019,7 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 "checksum crc32fast 1.2.0 (registry+https://github.com/rust-lang/crates.io-index)" = "ba125de2af0df55319f41944744ad91c71113bf74a4646efff39afe1f6842db1"
 "checksum derive_utils 0.9.1 (registry+https://github.com/rust-lang/crates.io-index)" = "114aa287358087a616096186f3de19525d8083f83d437dc6b583f895316b02e6"
 "checksum digest 0.8.1 (registry+https://github.com/rust-lang/crates.io-index)" = "f3d0c8c8752312f9713efd397ff63acb9f85585afbf179282e720e7704954dd5"
-"checksum dsn 0.4.1 (registry+https://github.com/rust-lang/crates.io-index)" = "b96f0ff1989eea979f8caec2e5824e4094f5187d344d70714c1d8752aa40d0d8"
+"checksum dsn 1.0.0 (registry+https://github.com/rust-lang/crates.io-index)" = "97b58c3d708895589040fc626af71e1d98cb048d4afaf746fcabcf7ea678c0bc"
 "checksum failure 0.1.6 (registry+https://github.com/rust-lang/crates.io-index)" = "f8273f13c977665c5db7eb2b99ae520952fe5ac831ae4cd09d80c4c7042b5ed9"
 "checksum failure_derive 0.1.6 (registry+https://github.com/rust-lang/crates.io-index)" = "0bc225b78e0391e4b8683440bf2e63c2deeeb2ce5189eab46e2b68c6d3725d08"
 "checksum fake-simd 0.1.2 (registry+https://github.com/rust-lang/crates.io-index)" = "e88a8acf291dafb59c2d96e8f59828f3838bb1a70398823ade51a84de6a6deed"

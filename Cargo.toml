@@ -17,5 +17,5 @@ travis-ci = { repository = "nbari/policyd-rate-limit", branch = "master" }
 
 [dependencies]
 clap = "2.33"
-dsn = "0.4"
+dsn = "1"
 mysql = "17.0.0"

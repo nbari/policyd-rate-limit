@@ -26,7 +26,7 @@ fn main() {
         .arg(
             Arg::with_name("dsn")
                 .env("DSN")
-                .help("mysql://<username>:<password>@<host>:<port>/<database>")
+                .help("mysql://<username>:<password>@tcp(<host>:<port>)/<database>")
                 .long("dsn")
                 .short("d")
                 .required(true),
