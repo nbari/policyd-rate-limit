@@ -79,4 +79,4 @@ Add the path of the policy-rate-limit socket to `smtpd_sender_restrictions` for 
 
     smtpd_sender_restrictions: check_policy_service { unix:/tmp/policy-rate-limit.sock, default_action=DUNNO }
 
-> check the perms of the socket, you may need `chmod 660`
+> check the perms of the socket, you may need `chmod 666`
