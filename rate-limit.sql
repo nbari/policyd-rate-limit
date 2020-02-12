@@ -12,9 +12,3 @@ CREATE TABLE IF NOT EXISTS `ratelimit` (
 ENGINE = InnoDB
 DEFAULT CHARACTER SET = utf8
 COLLATE = utf8_general_ci;
-
--- Check if need to reset counter
--- SELECT IF ((select expiry from ratelimit) > (SELECT TIMESTAMPDIFF(SECOND, t.rdate, NOW()) from ratelimit t), 'ok', 'expired');
-
--- Check quota
--- SELECT IF (quota > used, 1, 0) FROM ratelimit WHERE username = "a@foo.com";

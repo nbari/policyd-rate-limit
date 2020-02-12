@@ -1,7 +1,6 @@
 use clap::{App, Arg, SubCommand};
 use policyd_rate_limit::queries;
 use std::error::Error;
-use std::fs::OpenOptions;
 use std::io::Write;
 use std::io::{BufRead, BufReader};
 use std::os::unix::net::{UnixListener, UnixStream};
@@ -129,12 +128,12 @@ fn main() {
                     let mut reply = stream.try_clone().unwrap();
                     if let Err(e) = handle_client(stream, &queries::new(pool), &cuser) {
                         drop(reply.write_all(b"action=DUNNO\n\n"));
-                        println!("{}", e)
+                        println!("Error: {}", e)
                     }
                 });
             }
-            Err(err) => {
-                println!("Error: {}", err);
+            Err(e) => {
+                println!("Error: {}", e);
                 break;
             }
         }
@@ -146,13 +145,8 @@ fn handle_client(
     pool: &queries::Queries,
     cuser: &CreateUser,
 ) -> Result<(), Box<dyn Error>> {
-    println!("{:?} {:?}", pool.pool, cuser);
     let mut reply = stream.try_clone()?;
     let stream = BufReader::new(stream);
-    let mut file = OpenOptions::new()
-        .append(true)
-        .create(true)
-        .open("/tmp/log.txt")?;
 
     // search for sasl_username
     for line in stream.lines() {
@@ -164,33 +158,34 @@ fn handle_client(
                 return Ok(());
             }
             // find username
-            match pool.get_user(sasl_username) {
-                Ok(ok) => {
-                    if ok {
-                        pool.update_quota(sasl_username)?;
+            if let Ok(ok) = pool.get_user(sasl_username) {
+                if ok {
+                    // allow sending since the user has not reached the limits/quota
+                    reply.write_all(b"action=DUNNO\n\n")?;
+                } else {
+                    // check if the rate has expired and if yes reset limits and allow sending
+                    if pool.reset_quota(sasl_username)? > 0 {
                         reply.write_all(b"action=DUNNO\n\n")?;
                     } else {
                         reply.write_all(b"action=REJECT\n\n")?;
-                        pool.reset_quota(sasl_username)?;
                     }
-                    return Ok(());
                 }
-                Err(_) => {
-                    if let Some(limit) = cuser.limit {
-                        if let Some(rate) = cuser.rate {
-                            pool.create_user(sasl_username, limit, rate)?;
-                        }
+                pool.update_quota(sasl_username)?;
+                return Ok(());
+            } else {
+                // create user if cuser subcommand defined
+                if let Some(limit) = cuser.limit {
+                    if let Some(rate) = cuser.rate {
+                        pool.create_user(sasl_username, limit, rate)?;
                     }
-                    reply.write_all(b"action=DUNNO\n\n")?;
-                    return Ok(());
                 }
-            };
+                reply.write_all(b"action=DUNNO\n\n")?;
+                return Ok(());
+            }
         } else if line.is_empty() {
             reply.write_all(b"action=DUNNO\n\n")?;
-            file.write_all(b"--\n\n")?;
             return Ok(());
         }
-        file.write_all(format!("{}\n", line).as_bytes())?;
     }
     Ok(())
 }

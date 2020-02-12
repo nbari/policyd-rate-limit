@@ -49,12 +49,12 @@ impl Queries {
     }
 
     /// # Errors
-    /// will return Err if cannot create the user
-    pub fn reset_quota(&self, username: &str) -> Result<(), Box<dyn Error>> {
-        self.pool.prep_exec(
-            "UPDATE ratelimit SET used = used + 1 WHERE username=?",
+    /// will return Err if could not reset the quota
+    pub fn reset_quota(&self, username: &str) -> Result<u64, Box<dyn Error>> {
+        let rs = self.pool.prep_exec(
+            "UPDATE ratelimit SET used=0, rdate=NOW() WHERE rate < TIMESTAMPDIFF(SECOND, rdate, NOW()) AND username=?",
             (&username,),
         )?;
-        Ok(())
+        Ok(rs.affected_rows())
     }
 }
