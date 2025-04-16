@@ -3,7 +3,7 @@ use anyhow::Result;
 use futures::{SinkExt, StreamExt};
 use secrecy::ExposeSecret;
 use sqlx::any::AnyPoolOptions;
-use std::{os::unix::fs::PermissionsExt, path::Path};
+use std::path::Path;
 use tokio::net::{UnixListener, UnixStream};
 use tokio_util::codec::{Framed, LinesCodec};
 use tracing::{debug, error, info};
@@ -17,11 +17,6 @@ pub async fn handle(action: Action) -> Result<()> {
             }
 
             let listener = UnixListener::bind(&socket)?;
-
-            // Set permissions to 777 (testing purposes)
-            // This is not recommended for production
-            let perms = std::fs::Permissions::from_mode(0o777);
-            std::fs::set_permissions(&socket, perms)?;
 
             println!(
                 "{} - {}, listening on UNIX socket at {}...",
@@ -66,26 +61,33 @@ pub async fn handle(action: Action) -> Result<()> {
 async fn handle_client(stream: UnixStream, queries: Queries) -> Result<()> {
     let mut framed = Framed::new(stream, LinesCodec::new());
     let mut sasl_username: Option<String> = None;
+    let mut received_lines = Vec::new();
 
     while let Some(Ok(line)) = framed.next().await {
-        if line.trim().is_empty() {
+        let trimmed = line.trim().to_string();
+
+        if trimmed.is_empty() {
             break;
         }
 
-        debug!("Received line: {}", line);
+        debug!("Received line: {}", trimmed);
+        received_lines.push(trimmed.clone());
 
-        if let Some(name) = line.strip_prefix("sasl_username=") {
+        if let Some(name) = trimmed.strip_prefix("sasl_username=") {
             sasl_username = Some(name.trim().to_string());
-            break;
         }
     }
 
     let Some(username) = sasl_username else {
-        framed.send("action=DUNNO\n").await?;
+        send_policy_response(&mut framed, "action=DUNNO").await?;
         return Ok(());
     };
 
-    info!("SASL username: {}", username);
+    info!(
+        "SASL username: {}, Request:\n{}",
+        username,
+        received_lines.join("\n")
+    );
 
     if let Some(within_quota) = queries.get_user(&username).await? {
         let allow = if within_quota {
@@ -95,17 +97,29 @@ async fn handle_client(stream: UnixStream, queries: Queries) -> Result<()> {
         };
 
         if allow {
-            framed.send("action=DUNNO").await?;
+            send_policy_response(&mut framed, "action=DUNNO").await?;
         } else {
-            framed.send("action=REJECT sending limit exceeded").await?;
+            send_policy_response(&mut framed, "action=REJECT sending limit exceeded").await?;
         }
 
         queries.update_quota(&username).await?;
     } else {
         // TODO cuser.limit, cuser.rate)
         queries.create_user(&username, 10, 3600).await?;
-        framed.send("action=DUNNO").await?;
+        send_policy_response(&mut framed, "action=DUNNO").await?;
     }
+
+    Ok(())
+}
+
+/// Send a policy response to the client
+/// Postfix’s policy protocol expects two \n
+async fn send_policy_response(
+    framed: &mut Framed<UnixStream, LinesCodec>,
+    response: &str,
+) -> Result<()> {
+    framed.send(response).await?;
+    framed.send("").await?;
 
     Ok(())
 }

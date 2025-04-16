@@ -56,7 +56,8 @@ pub fn init(verbosity_level: Option<Level>) -> Result<()> {
         .from_env_lossy()
         .add_directive("hyper=error".parse()?)
         .add_directive("tokio=error".parse()?)
-        .add_directive("reqwest=error".parse()?);
+        .add_directive("reqwest=error".parse()?)
+        .add_directive("opentelemetry_sdk=warn".parse()?);
 
     let subscriber = Registry::default()
         .with(fmt_layer)
