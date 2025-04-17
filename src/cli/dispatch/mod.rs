@@ -14,6 +14,9 @@ pub fn handler(matches: &clap::ArgMatches) -> Result<Action> {
                 .map(|s| s.to_string())
                 .unwrap_or_default(),
         ),
+        pool: matches.get_one::<u32>("pool").copied().unwrap_or(5),
+        limit: matches.get_one::<u32>("limit").copied().unwrap_or(10) as i32,
+        rate: matches.get_one::<u32>("rate").copied().unwrap_or(86400) as i32,
     })
 }
 
@@ -44,9 +47,18 @@ mod tests {
         let action = handler(&m)?;
 
         match action {
-            Action::Run { socket, dsn } => {
+            Action::Run {
+                socket,
+                dsn,
+                pool,
+                limit,
+                rate,
+            } => {
                 assert_eq!(socket, Path::new("/tmp/a.sock"));
                 assert_eq!(dsn.expose_secret(), "");
+                assert_eq!(limit, 10);
+                assert_eq!(rate, 86400);
+                assert_eq!(pool, 5);
             }
         }
 

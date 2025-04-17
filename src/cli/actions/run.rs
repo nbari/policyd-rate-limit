@@ -3,15 +3,21 @@ use anyhow::Result;
 use futures::{SinkExt, StreamExt};
 use secrecy::ExposeSecret;
 use sqlx::any::AnyPoolOptions;
-use std::path::Path;
+use std::{path::Path, time::Duration};
 use tokio::net::{UnixListener, UnixStream};
 use tokio_util::codec::{Framed, LinesCodec};
-use tracing::{debug, error, info};
+use tracing::{debug, error, info, warn};
 
 /// Handle the create action
 pub async fn handle(action: Action) -> Result<()> {
     match action {
-        Action::Run { dsn, socket } => {
+        Action::Run {
+            dsn,
+            pool,
+            socket,
+            limit,
+            rate,
+        } => {
             if Path::new(&socket).exists() {
                 std::fs::remove_file(&socket)?;
             }
@@ -31,11 +37,13 @@ pub async fn handle(action: Action) -> Result<()> {
             let dsn_str = dsn.expose_secret();
             debug!("Connecting to database with DSN: {}", dsn_str);
 
-            debug!("Attempting to connect to database...");
             let pool = AnyPoolOptions::new()
-                .max_connections(5)
+                .max_connections(pool)
+                .idle_timeout(Duration::from_secs(300))
                 .connect(dsn_str)
                 .await?;
+
+            debug!(?pool, "Pool created");
 
             let queries = Queries::new(pool);
 
@@ -46,7 +54,7 @@ pub async fn handle(action: Action) -> Result<()> {
                         info!("New client connected: {:#?}", stream.local_addr());
 
                         // Spawn a new task to handle this client
-                        tokio::spawn(handle_client(stream, queries.clone()));
+                        tokio::spawn(handle_client(stream, queries.clone(), limit, rate));
                     }
 
                     Err(e) => {
@@ -58,7 +66,7 @@ pub async fn handle(action: Action) -> Result<()> {
     }
 }
 
-async fn handle_client(stream: UnixStream, queries: Queries) -> Result<()> {
+async fn handle_client(stream: UnixStream, queries: Queries, limit: i32, rate: i32) -> Result<()> {
     let mut framed = Framed::new(stream, LinesCodec::new());
     let mut sasl_username: Option<String> = None;
     let mut received_lines = Vec::new();
@@ -79,11 +87,14 @@ async fn handle_client(stream: UnixStream, queries: Queries) -> Result<()> {
     }
 
     let Some(username) = sasl_username else {
-        send_policy_response(&mut framed, "action=DUNNO").await?;
+        send_policy_response(&mut framed, "action=REJECT user not provided").await?;
+
+        warn!("No SASL username provided");
+
         return Ok(());
     };
 
-    info!(
+    debug!(
         "SASL username: {}, Request:\n{}",
         username,
         received_lines.join("\n")
@@ -104,8 +115,7 @@ async fn handle_client(stream: UnixStream, queries: Queries) -> Result<()> {
 
         queries.update_quota(&username).await?;
     } else {
-        // TODO cuser.limit, cuser.rate)
-        queries.create_user(&username, 10, 3600).await?;
+        queries.create_user(&username, limit, rate).await?;
         send_policy_response(&mut framed, "action=DUNNO").await?;
     }
 

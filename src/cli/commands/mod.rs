@@ -41,7 +41,7 @@ pub fn new() -> Command {
                 .short('s')
                 .long("socket")
                 .help("Path to the Unix domain socket")
-                .default_value("/tmp/postfix/policy-rate-limit.sock")
+                .default_value("/tmp/policy-rate-limit.sock")
                 .value_parser(validate_socket_path)
                 .value_name("SOCKET")
                 .value_hint(ValueHint::FilePath),
@@ -57,7 +57,23 @@ pub fn new() -> Command {
             Arg::new("pool")
                 .long("pool")
                 .help("Pool size for database connections")
+                .default_value("5")
+                .value_parser(clap::value_parser!(u32)),
+        )
+        .arg(
+            Arg::new("limit")
+                .short('l')
+                .long("limit")
+                .help("Maximum allowed messages")
                 .default_value("10")
+                .value_parser(clap::value_parser!(u32)),
+        )
+        .arg(
+            Arg::new("rate")
+                .short('r')
+                .long("rate")
+                .help("rate in seconds, limits the messages to be sent in the defined period")
+                .default_value("86400")
                 .value_parser(clap::value_parser!(u32)),
         )
         .arg(
@@ -66,28 +82,6 @@ pub fn new() -> Command {
                 .long("verbose")
                 .help("Increase verbosity, -vv for debug")
                 .action(ArgAction::Count),
-        )
-        .subcommand(
-            Command::new("cuser")
-                .about("Create the user if not found, defaults: 100 messages per day")
-                .arg(
-                    Arg::new("limit")
-                        .short('l')
-                        .long("limit")
-                        .help("Maximum allowed messages")
-                        .default_value("100")
-                        .value_parser(clap::value_parser!(u32)),
-                )
-                .arg(
-                    Arg::new("rate")
-                        .short('r')
-                        .long("rate")
-                        .help(
-                            "rate in seconds, limits the messages to be sent in the defined period",
-                        )
-                        .default_value("86400")
-                        .value_parser(clap::value_parser!(u32)),
-                ),
         )
 }
 
@@ -144,6 +138,52 @@ mod tests {
         assert_eq!(m.get_one::<u8>("verbose").copied(), Some(2));
 
         assert_eq!(m.get_one::<String>("dsn").map(|s| s.as_str()), Some(""));
+
+        Ok(())
+    }
+
+    #[test]
+    fn test_limit() -> Result<()> {
+        let matches =
+            new().try_get_matches_from(["bin", "-l", "20", "--dsn", "", "-s", "/tmp/a.sock"]);
+
+        assert!(matches.is_ok());
+
+        let m = matches.unwrap();
+
+        assert_eq!(
+            m.get_one::<PathBuf>("socket").map(|s| s.as_path()),
+            Some(Path::new("/tmp/a.sock"))
+        );
+
+        assert_eq!(m.get_one::<u8>("verbose").copied(), Some(0));
+
+        assert_eq!(m.get_one::<String>("dsn").map(|s| s.as_str()), Some(""));
+
+        assert_eq!(m.get_one::<u32>("limit").copied(), Some(20));
+
+        Ok(())
+    }
+
+    #[test]
+    fn test_rate() -> Result<()> {
+        let matches =
+            new().try_get_matches_from(["bin", "-r", "3600", "--dsn", "", "-s", "/tmp/a.sock"]);
+
+        assert!(matches.is_ok());
+
+        let m = matches.unwrap();
+
+        assert_eq!(
+            m.get_one::<PathBuf>("socket").map(|s| s.as_path()),
+            Some(Path::new("/tmp/a.sock"))
+        );
+
+        assert_eq!(m.get_one::<u8>("verbose").copied(), Some(0));
+
+        assert_eq!(m.get_one::<String>("dsn").map(|s| s.as_str()), Some(""));
+
+        assert_eq!(m.get_one::<u32>("rate").copied(), Some(3600));
 
         Ok(())
     }
