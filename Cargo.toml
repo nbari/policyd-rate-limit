@@ -31,3 +31,8 @@ tracing-subscriber = { version = "0.3.19", features = ["env-filter", "json"] }
 
 [build-dependencies]
 built = { version = "0.7", features = ["git2"] }
+
+[profile.release]
+lto = "fat"
+codegen-units = 1
+strip = "symbols"
