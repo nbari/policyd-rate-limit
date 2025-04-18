@@ -19,7 +19,7 @@ Usage: policyd-rate-limit [OPTIONS] --dsn <dsn>
 Options:
   -s, --socket <SOCKET>  Path to the Unix domain socket [default: /tmp/policy-rate-limit.sock]
       --dsn <dsn>        Database connection string [env: DSN=]
-      --pool <pool>      Pool size for database connections [default: 10]
+      --pool <pool>      Pool size for database connections [default: 5]
   -l, --limit <limit>    Maximum allowed messages [default: 10]
   -r, --rate <rate>      rate in seconds, limits the messages to be sent in the defined period [default: 86400]
   -v, --verbose...       Increase verbosity, -vv for debug
@@ -46,4 +46,4 @@ Add the path of the policy-rate-limit socket to `smtpd_sender_restrictions` for 
 
     smtpd_sender_restrictions: check_policy_service { unix:/tmp/policy-rate-limit.sock, default_action=DUNNO }
 
-> check the perms of the socket, you may need `chmod 666`
+> check the perms of the socket
