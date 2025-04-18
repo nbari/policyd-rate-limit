@@ -51,7 +51,7 @@ pub async fn handle(action: Action) -> Result<()> {
             loop {
                 match listener.accept().await {
                     Ok((stream, _)) => {
-                        info!("New client connected: {:#?}", stream.local_addr());
+                        debug!("New client connected: {:#?}", stream.local_addr());
 
                         // Spawn a new task to handle this client
                         tokio::spawn(handle_client(stream, queries.clone(), limit, rate));
@@ -79,6 +79,7 @@ async fn handle_client(stream: UnixStream, queries: Queries, limit: i32, rate: i
         }
 
         debug!("Received line: {}", trimmed);
+
         received_lines.push(trimmed.clone());
 
         if let Some(name) = trimmed.strip_prefix("sasl_username=") {
@@ -108,13 +109,20 @@ async fn handle_client(stream: UnixStream, queries: Queries, limit: i32, rate: i
         };
 
         if allow {
+            info!("User {} is within quota", username);
+
             send_policy_response(&mut framed, "action=DUNNO").await?;
         } else {
+            info!(
+                "User {} is not within quota, sending limit exceeded",
+                username
+            );
             send_policy_response(&mut framed, "action=REJECT sending limit exceeded").await?;
         }
 
         queries.update_quota(&username).await?;
     } else {
+        info!("User {} not found, creating new user", username);
         queries.create_user(&username, limit, rate).await?;
         send_policy_response(&mut framed, "action=DUNNO").await?;
     }
