@@ -78,8 +78,6 @@ async fn handle_client(stream: UnixStream, queries: Queries, limit: i32, rate: i
             break;
         }
 
-        debug!("Received line: {}", trimmed);
-
         received_lines.push(trimmed.clone());
 
         if let Some(name) = trimmed.strip_prefix("sasl_username=") {
@@ -123,7 +121,10 @@ async fn handle_client(stream: UnixStream, queries: Queries, limit: i32, rate: i
         queries.update_quota(&username).await?;
     } else {
         info!("User {} not found, creating new user", username);
+
+        // User not found, create a new one
         queries.create_user(&username, limit, rate).await?;
+
         send_policy_response(&mut framed, "action=DUNNO").await?;
     }
 
