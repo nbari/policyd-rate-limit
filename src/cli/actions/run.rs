@@ -85,13 +85,22 @@ async fn handle_client(stream: UnixStream, queries: Queries, limit: i32, rate: i
         }
     }
 
+    // Handle unauthenticated or empty SASL username (incoming mail)
     let Some(username) = sasl_username else {
-        send_policy_response(&mut framed, "action=REJECT user not provided").await?;
+        send_policy_response(&mut framed, "action=DUNNO").await?;
 
-        warn!("No SASL username provided");
+        warn!("No SASL username in policy request. Likely incoming mail.");
 
         return Ok(());
     };
+
+    if username.is_empty() {
+        send_policy_response(&mut framed, "action=DUNNO").await?;
+
+        debug!("Empty SASL username in policy request. Skipping rate limit.");
+
+        return Ok(());
+    }
 
     debug!(
         "SASL username: {}, Request:\n{}",
@@ -112,7 +121,7 @@ async fn handle_client(stream: UnixStream, queries: Queries, limit: i32, rate: i
             send_policy_response(&mut framed, "action=DUNNO").await?;
         } else {
             info!(
-                "User {} is not within quota, sending limit exceeded",
+                "User {} is not within quota, sending limit exceeded, action=REJECT",
                 username
             );
             send_policy_response(&mut framed, "action=REJECT sending limit exceeded").await?;
