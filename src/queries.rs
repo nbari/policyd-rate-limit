@@ -43,8 +43,13 @@ impl Queries {
 
     pub async fn reset_quota_if_expired(&self, username: &str) -> sqlx::Result<bool> {
         let row = sqlx::query_scalar::<_, i64>(
-            "UPDATE ratelimit SET used = 0, rdate = NOW()
-            WHERE rate < EXTRACT(EPOCH FROM NOW() - rdate) AND username = $1
+            "WITH current_time AS (
+                SELECT NOW() AS now
+            )
+            UPDATE ratelimit
+            SET used = 0, rdate = (SELECT now FROM current_time)
+            WHERE username = $1
+            AND rate < EXTRACT(EPOCH FROM (SELECT now FROM current_time) - rdate)
             RETURNING 1",
         )
         .bind(username)
