@@ -2,7 +2,7 @@ Changelog
 =========
 
 ## 1.0.1
-- improve reset_quota_if_expired to using CTE to get NOW() and reduce function calls
+- improve reset_quota_if_expired by obtaining now and avoiding to call function twice
 
 ## 1.0.0
 - using sqlx to support multiple database backends

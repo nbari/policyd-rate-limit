@@ -1,3 +1,4 @@
+use chrono::Utc;
 use sqlx::AnyPool;
 use std::sync::Arc;
 
@@ -41,18 +42,27 @@ impl Queries {
         Ok(())
     }
 
+    // CTE to get the current time and use it to reset the quota - postgres
+    // "WITH now_val AS (
+    //         SELECT NOW() AS now_time
+    //     )
+    //     UPDATE ratelimit
+    //     SET used = 0, rdate = (SELECT now_time FROM now_val)
+    //     WHERE username = $1
+    //       AND rate < EXTRACT(EPOCH FROM (SELECT now_time FROM now_val) - rdate)
+    //     RETURNING 1",
     pub async fn reset_quota_if_expired(&self, username: &str) -> sqlx::Result<bool> {
+        let now = Utc::now().timestamp();
+
         let row = sqlx::query_scalar::<_, i64>(
-            "WITH current_time AS (
-                SELECT NOW() AS now
-            )
-            UPDATE ratelimit
-            SET used = 0, rdate = (SELECT now FROM current_time)
-            WHERE username = $1
-            AND rate < EXTRACT(EPOCH FROM (SELECT now FROM current_time) - rdate)
+            "UPDATE ratelimit
+            SET used = 0, rdate = ?
+            WHERE username = ? AND rate < TIMESTAMPDIFF(SECOND, rdate, ?)
             RETURNING 1",
         )
+        .bind(now)
         .bind(username)
+        .bind(now)
         .fetch_optional(&*self.pool)
         .await?;
 

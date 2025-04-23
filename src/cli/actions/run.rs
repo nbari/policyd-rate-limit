@@ -112,7 +112,21 @@ async fn handle_client(stream: UnixStream, queries: Queries, limit: i32, rate: i
         let allow = if within_quota {
             true
         } else {
-            queries.reset_quota_if_expired(&username).await?
+            // Check if the quota has expired and reset it if necessary
+            match queries.reset_quota_if_expired(&username).await {
+                Ok(true) => {
+                    info!("Quota for user {} has expired, resetting", username);
+                    true
+                }
+                Ok(false) => {
+                    info!("Quota for user {} has not expired", username);
+                    false
+                }
+                Err(e) => {
+                    error!("Error checking quota expiration: {:?}", e);
+                    false
+                }
+            }
         };
 
         if allow {
