@@ -347,15 +347,6 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "1aaf95b3e5c8f23aa320147307562d361db0ae0d51242340f558153b4eb2439b"
 
 [[package]]
-name = "dsn"
-version = "1.1.1"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "34300ce06d93dc074bfb749b1fca08e75910a181a5f3828689e3f76ce748d71e"
-dependencies = [
- "percent-encoding",
-]
-
-[[package]]
 name = "either"
 version = "1.15.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -1379,12 +1370,11 @@ checksum = "7edddbd0b52d732b21ad9a5fab5c704c14cd949e5e9a1ec5929a24fded1b904c"
 
 [[package]]
 name = "policyd-rate-limit"
-version = "1.0.1"
+version = "1.0.2"
 dependencies = [
  "anyhow",
  "built",
  "clap",
- "dsn",
  "futures",
  "opentelemetry",
  "opentelemetry-otlp",
