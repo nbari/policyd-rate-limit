@@ -1,4 +1,3 @@
-use chrono::Utc;
 use sqlx::AnyPool;
 use std::sync::Arc;
 
@@ -42,30 +41,37 @@ impl Queries {
         Ok(())
     }
 
-    // CTE to get the current time and use it to reset the quota - postgres
-    // "WITH now_val AS (
-    //         SELECT NOW() AS now_time
-    //     )
-    //     UPDATE ratelimit
-    //     SET used = 0, rdate = (SELECT now_time FROM now_val)
-    //     WHERE username = $1
-    //       AND rate < EXTRACT(EPOCH FROM (SELECT now_time FROM now_val) - rdate)
-    //     RETURNING 1",
     pub async fn reset_quota_if_expired(&self, username: &str) -> sqlx::Result<bool> {
-        let now = Utc::now().timestamp();
+        // Get the connection info to determine the database type
+        let db_url = &self.pool.as_ref().connect_options().database_url;
 
-        let row = sqlx::query_scalar::<_, i64>(
-            "UPDATE ratelimit
-            SET used = 0, rdate = ?
-            WHERE username = ? AND rate < TIMESTAMPDIFF(SECOND, rdate, ?)
-            RETURNING 1",
-        )
-        .bind(now)
-        .bind(username)
-        .bind(now)
-        .fetch_optional(&*self.pool)
-        .await?;
+        // CTE to get the current time and use it to reset the quota - postgres
+        if db_url.scheme().starts_with("postgres") {
+            let row = sqlx::query_scalar::<_, i64>(
+                "WITH now_val AS (
+                        SELECT NOW() AS now_time
+                    )
+                    UPDATE ratelimit
+                    SET used = 0, rdate = (SELECT now_time FROM now_val)
+                    WHERE username = $1
+                    AND rate < EXTRACT(EPOCH FROM (SELECT now_time FROM now_val) - rdate)
+                    RETURNING 1",
+            )
+            .bind(username)
+            .fetch_optional(&*self.pool)
+            .await?;
+            Ok(row.is_some())
+        } else {
+            let row = sqlx::query_scalar::<_, i64>(
+                "UPDATE ratelimit SET used = 0, rdate = NOW()
+                    WHERE rate < EXTRACT(EPOCH FROM NOW() - rdate) AND username = $1
+                    RETURNING 1",
+            )
+            .bind(username)
+            .fetch_optional(&*self.pool)
+            .await?;
 
-        Ok(row.is_some())
+            Ok(row.is_some())
+        }
     }
 }
