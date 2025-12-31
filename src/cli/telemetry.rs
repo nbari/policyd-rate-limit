@@ -1,3 +1,5 @@
+use std::time::Duration;
+
 use anyhow::Result;
 use opentelemetry::{KeyValue, global, trace::TracerProvider as _};
 use opentelemetry_otlp::WithExportConfig;
@@ -5,7 +7,6 @@ use opentelemetry_sdk::{
     Resource,
     trace::{SdkTracerProvider, Tracer},
 };
-use std::time::Duration;
 use tracing::Level;
 use tracing_subscriber::{EnvFilter, Registry, fmt, layer::SubscriberExt};
 

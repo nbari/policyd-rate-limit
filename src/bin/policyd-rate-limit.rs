@@ -1,4 +1,5 @@
 use anyhow::Result;
+
 use policyd_rate_limit::cli::{actions, actions::Action, start};
 
 #[tokio::main]

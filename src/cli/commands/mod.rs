@@ -1,10 +1,12 @@
+use std::path::PathBuf;
+
 use clap::{
     Arg, ArgAction, ColorChoice, Command, ValueHint,
     builder::styling::{AnsiColor, Effects, Styles},
 };
-use std::path::PathBuf;
 
 pub mod built_info {
+    #![allow(clippy::doc_markdown, clippy::needless_raw_string_hashes)]
     include!(concat!(env!("OUT_DIR"), "/built.rs"));
 }
 
@@ -33,7 +35,7 @@ pub fn new() -> Command {
     Command::new("policyd-rate-limit")
         .about("Postfix policy daemon for rate limiting")
         .version(env!("CARGO_PKG_VERSION"))
-        .long_version(built_info::GIT_COMMIT_HASH.to_owned())
+        .long_version(built_info::GIT_COMMIT_HASH)
         .color(ColorChoice::Auto)
         .styles(styles)
         .arg(
@@ -64,16 +66,16 @@ pub fn new() -> Command {
             Arg::new("limit")
                 .short('l')
                 .long("limit")
-                .help("Maximum allowed messages")
-                .default_value("10")
+                .help("Maximum allowed messages per rate window (repeatable, default: 10)")
+                .action(ArgAction::Append)
                 .value_parser(clap::value_parser!(u32)),
         )
         .arg(
             Arg::new("rate")
                 .short('r')
                 .long("rate")
-                .help("rate in seconds, limits the messages to be sent in the defined period")
-                .default_value("86400")
+                .help("rate in seconds for each window (repeatable, default: 86400)")
+                .action(ArgAction::Append)
                 .value_parser(clap::value_parser!(u32)),
         )
         .arg(
@@ -87,15 +89,21 @@ pub fn new() -> Command {
 
 #[cfg(test)]
 mod tests {
-    use super::*;
-    use anyhow::Result;
     use std::path::Path;
+
+    use anyhow::Result;
+
+    use super::*;
 
     #[test]
     fn test_defaults() {
         let matches = new().try_get_matches_from(["bin"]);
 
-        assert!(matches.is_err());
+        if std::env::var_os("DSN").is_some() {
+            assert!(matches.is_ok());
+        } else {
+            assert!(matches.is_err());
+        }
     }
 
     #[test]
@@ -103,19 +111,17 @@ mod tests {
         let matches =
             new().try_get_matches_from(["bin", "-s", "/tmp/a.sock", "--dsn", "redis://localhost"]);
 
-        assert!(matches.is_ok());
-
-        let m = matches.unwrap();
+        let m = matches?;
 
         assert_eq!(
-            m.get_one::<PathBuf>("socket").map(|s| s.as_path()),
+            m.get_one::<PathBuf>("socket").map(PathBuf::as_path),
             Some(Path::new("/tmp/a.sock"))
         );
 
         assert_eq!(m.get_one::<u8>("verbose").copied(), Some(0));
 
         assert_eq!(
-            m.get_one::<String>("dsn").map(|s| s.as_str()),
+            m.get_one::<String>("dsn").map(String::as_str),
             Some("redis://localhost")
         );
 
@@ -126,18 +132,16 @@ mod tests {
     fn test_verbose() -> Result<()> {
         let matches = new().try_get_matches_from(["bin", "-vv", "--dsn", "", "-s", "/tmp/a.sock"]);
 
-        assert!(matches.is_ok());
-
-        let m = matches.unwrap();
+        let m = matches?;
 
         assert_eq!(
-            m.get_one::<PathBuf>("socket").map(|s| s.as_path()),
+            m.get_one::<PathBuf>("socket").map(PathBuf::as_path),
             Some(Path::new("/tmp/a.sock"))
         );
 
         assert_eq!(m.get_one::<u8>("verbose").copied(), Some(2));
 
-        assert_eq!(m.get_one::<String>("dsn").map(|s| s.as_str()), Some(""));
+        assert_eq!(m.get_one::<String>("dsn").map(String::as_str), Some(""));
 
         Ok(())
     }
@@ -147,20 +151,22 @@ mod tests {
         let matches =
             new().try_get_matches_from(["bin", "-l", "20", "--dsn", "", "-s", "/tmp/a.sock"]);
 
-        assert!(matches.is_ok());
-
-        let m = matches.unwrap();
+        let m = matches?;
 
         assert_eq!(
-            m.get_one::<PathBuf>("socket").map(|s| s.as_path()),
+            m.get_one::<PathBuf>("socket").map(PathBuf::as_path),
             Some(Path::new("/tmp/a.sock"))
         );
 
         assert_eq!(m.get_one::<u8>("verbose").copied(), Some(0));
 
-        assert_eq!(m.get_one::<String>("dsn").map(|s| s.as_str()), Some(""));
+        assert_eq!(m.get_one::<String>("dsn").map(String::as_str), Some(""));
 
-        assert_eq!(m.get_one::<u32>("limit").copied(), Some(20));
+        let limits: Vec<u32> = m
+            .get_many("limit")
+            .map(|values| values.copied().collect())
+            .unwrap_or_default();
+        assert_eq!(limits, vec![20]);
 
         Ok(())
     }
@@ -170,20 +176,22 @@ mod tests {
         let matches =
             new().try_get_matches_from(["bin", "-r", "3600", "--dsn", "", "-s", "/tmp/a.sock"]);
 
-        assert!(matches.is_ok());
-
-        let m = matches.unwrap();
+        let m = matches?;
 
         assert_eq!(
-            m.get_one::<PathBuf>("socket").map(|s| s.as_path()),
+            m.get_one::<PathBuf>("socket").map(PathBuf::as_path),
             Some(Path::new("/tmp/a.sock"))
         );
 
         assert_eq!(m.get_one::<u8>("verbose").copied(), Some(0));
 
-        assert_eq!(m.get_one::<String>("dsn").map(|s| s.as_str()), Some(""));
+        assert_eq!(m.get_one::<String>("dsn").map(String::as_str), Some(""));
 
-        assert_eq!(m.get_one::<u32>("rate").copied(), Some(3600));
+        let rates: Vec<u32> = m
+            .get_many("rate")
+            .map(|values| values.copied().collect())
+            .unwrap_or_default();
+        assert_eq!(rates, vec![3600]);
 
         Ok(())
     }

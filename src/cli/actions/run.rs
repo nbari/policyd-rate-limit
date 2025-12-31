@@ -1,22 +1,44 @@
-use crate::{cli::actions::Action, queries::Queries};
+use std::{path::Path, sync::Arc, time::Duration};
+
 use anyhow::Result;
 use futures::{SinkExt, StreamExt};
 use secrecy::ExposeSecret;
 use sqlx::any::AnyPoolOptions;
-use std::{path::Path, time::Duration};
 use tokio::net::{UnixListener, UnixStream};
 use tokio_util::codec::{Framed, LinesCodec};
 use tracing::{debug, error, info, warn};
 
-/// Handle the create action
+use crate::{RateLimit, cli::actions::Action, queries::Queries};
+
+fn redact_dsn(dsn: &str) -> String {
+    let Some((scheme, rest)) = dsn.split_once("://") else {
+        return dsn.to_string();
+    };
+
+    let Some(at_pos) = rest.find('@') else {
+        return dsn.to_string();
+    };
+
+    let (creds, host) = rest.split_at(at_pos);
+    let Some(colon_pos) = creds.find(':') else {
+        return dsn.to_string();
+    };
+
+    let user = &creds[..colon_pos];
+    format!("{scheme}://{user}:***{host}")
+}
+
+/// Handle the create action.
+///
+/// # Errors
+/// Returns an error if the socket setup, database operations, or client handling fails.
 pub async fn handle(action: Action) -> Result<()> {
     match action {
         Action::Run {
             dsn,
             pool,
             socket,
-            limit,
-            rate,
+            windows,
         } => {
             if Path::new(&socket).exists() {
                 std::fs::remove_file(&socket)?;
@@ -35,7 +57,7 @@ pub async fn handle(action: Action) -> Result<()> {
             sqlx::any::install_default_drivers();
 
             let dsn_str = dsn.expose_secret();
-            debug!("Connecting to database with DSN: {}", dsn_str);
+            debug!("Connecting to database with DSN: {}", redact_dsn(dsn_str));
 
             let pool = AnyPoolOptions::new()
                 .max_connections(pool)
@@ -46,6 +68,7 @@ pub async fn handle(action: Action) -> Result<()> {
             debug!(?pool, "Pool created");
 
             let queries = Queries::new(pool);
+            let windows = Arc::new(windows);
 
             // Start accepting connections
             loop {
@@ -54,7 +77,7 @@ pub async fn handle(action: Action) -> Result<()> {
                         debug!("New client connected: {:#?}", stream.local_addr());
 
                         // Spawn a new task to handle this client
-                        tokio::spawn(handle_client(stream, queries.clone(), limit, rate));
+                        tokio::spawn(handle_client(stream, queries.clone(), windows.clone()));
                     }
 
                     Err(e) => {
@@ -66,7 +89,11 @@ pub async fn handle(action: Action) -> Result<()> {
     }
 }
 
-async fn handle_client(stream: UnixStream, queries: Queries, limit: i32, rate: i32) -> Result<()> {
+async fn handle_client(
+    stream: UnixStream,
+    queries: Queries,
+    windows: Arc<Vec<RateLimit>>,
+) -> Result<()> {
     let mut framed = Framed::new(stream, LinesCodec::new());
     let mut sasl_username: Option<String> = None;
     let mut received_lines = Vec::new();
@@ -108,48 +135,48 @@ async fn handle_client(stream: UnixStream, queries: Queries, limit: i32, rate: i
         received_lines.join("\n")
     );
 
-    if let Some(within_quota) = queries.get_user(&username).await? {
-        let allow = if within_quota {
-            true
-        } else {
-            // Check if the quota has expired and reset it if necessary
-            match queries.reset_quota_if_expired(&username).await {
-                Ok(true) => {
-                    info!("Quota for user {} has expired, resetting", username);
-                    true
-                }
-                Ok(false) => {
-                    info!("Quota for user {} has not expired", username);
-                    false
-                }
-                Err(e) => {
-                    error!("Error checking quota expiration: {:?}", e);
-                    false
-                }
-            }
-        };
+    match queries.reset_quotas_if_expired(&username).await {
+        Ok(true) => info!("Reset expired quotas for user {}", username),
+        Ok(false) => (),
+        Err(e) => error!("Error checking quota expiration: {:?}", e),
+    }
 
-        if allow {
-            info!("User {} is within quota", username);
-
-            send_policy_response(&mut framed, "action=DUNNO").await?;
-        } else {
-            info!(
-                "User {} is not within quota, sending limit exceeded, action=REJECT",
-                username
-            );
-            send_policy_response(&mut framed, "action=REJECT sending limit exceeded").await?;
-        }
-
-        queries.update_quota(&username).await?;
-    } else {
+    let mut active_windows = queries.get_windows(&username).await?;
+    if active_windows.is_empty() {
         info!("User {} not found, creating new user", username);
 
         // User not found, create a new one
-        queries.create_user(&username, limit, rate).await?;
+        queries.create_user(&username, windows.as_ref()).await?;
 
         send_policy_response(&mut framed, "action=DUNNO").await?;
+        return Ok(());
     }
+
+    if active_windows.len() < windows.len() {
+        if let Err(e) = queries.ensure_windows(&username, windows.as_ref()).await {
+            error!("Failed to add missing windows for {}: {:?}", username, e);
+        } else {
+            active_windows = queries.get_windows(&username).await?;
+        }
+    }
+
+    let allow = active_windows
+        .iter()
+        .all(|window| window.used < window.quota);
+
+    if allow {
+        info!("User {} is within quota", username);
+
+        send_policy_response(&mut framed, "action=DUNNO").await?;
+    } else {
+        info!(
+            "User {} is not within quota, sending limit exceeded, action=REJECT",
+            username
+        );
+        send_policy_response(&mut framed, "action=REJECT sending limit exceeded").await?;
+    }
+
+    queries.update_quota(&username).await?;
 
     Ok(())
 }

@@ -1,15 +1,16 @@
 pub mod run;
 
-use secrecy::SecretString;
 use std::path::PathBuf;
 
+use secrecy::SecretString;
+
+use crate::RateLimit;
 #[derive(Debug)]
 pub enum Action {
     Run {
         dsn: SecretString,
         pool: u32,
         socket: PathBuf,
-        limit: i32,
-        rate: i32,
+        windows: Vec<RateLimit>,
     },
 }

@@ -1,6 +1,9 @@
 Changelog
 =========
 
+## 1.1.0
+- support multiple rate windows and add integration tests for postgres/mariadb/sqlite
+
 ## 1.0.1
 - improve reset_quota_if_expired by obtaining now and avoiding to call function twice
 

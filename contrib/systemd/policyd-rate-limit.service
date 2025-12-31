@@ -1,0 +1,13 @@
+[Unit]
+Description=Policyd Rate Limiting Daemon
+After=network.target
+
+[Service]
+Type=simple
+ExecStart=/usr/local/bin/policyd-rate-limit -s /tmp/policy-rate-limit.sock -vv
+EnvironmentFile=/etc/policyd-rate-limit.env
+Restart=on-failure
+User=postfix
+
+[Install]
+WantedBy=multi-user.target
