@@ -52,7 +52,7 @@ policyd-rate-limit --dsn ... -l 7 -r 3600 -l 100 -r 86400
 All configured windows are enforced together: a request is allowed only when *every* window
 is still under quota. This means the most restrictive window effectively caps traffic.
 
-## Migration notes (1.0.2+)
+## Migration notes (1.1.0+)
 
 The `ratelimit` table now uses a composite primary key `(username, rate)` to support multiple
 windows per user. Migrate existing tables as follows:
